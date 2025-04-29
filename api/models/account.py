@@ -12,45 +12,71 @@ from .types import StringUUID
 
 
 class AccountStatus(enum.StrEnum):
-    PENDING = "pending"
-    UNINITIALIZED = "uninitialized"
-    ACTIVE = "active"
-    BANNED = "banned"
-    CLOSED = "closed"
+    """
+    账户状态枚举
+    
+    定义系统中账户可能的各种状态
+    """
+    PENDING = "pending"          # 待处理，账户已创建但未完成注册流程
+    UNINITIALIZED = "uninitialized"  # 未初始化，账户创建但未设置必要信息
+    ACTIVE = "active"            # 活跃，账户正常可用
+    BANNED = "banned"            # 封禁，账户被管理员禁用
+    CLOSED = "closed"            # 关闭，账户已被用户自行关闭
 
 
 class Account(UserMixin, Base):
+    """
+    账户模型
+    
+    表示系统中的用户账户，继承Flask-Login的UserMixin以支持用户认证功能。
+    包含用户的基本信息、认证信息和偏好设置。
+    """
     __tablename__ = "accounts"
     __table_args__ = (db.PrimaryKeyConstraint("id", name="account_pkey"), db.Index("account_email_idx", "email"))
 
     id: Mapped[str] = mapped_column(StringUUID, server_default=db.text("uuid_generate_v4()"))
-    name = db.Column(db.String(255), nullable=False)
-    email = db.Column(db.String(255), nullable=False)
-    password = db.Column(db.String(255), nullable=True)
-    password_salt = db.Column(db.String(255), nullable=True)
-    avatar = db.Column(db.String(255))
-    interface_language = db.Column(db.String(255))
-    interface_theme = db.Column(db.String(255))
-    timezone = db.Column(db.String(255))
-    last_login_at = db.Column(db.DateTime)
-    last_login_ip = db.Column(db.String(255))
-    last_active_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
-    status = db.Column(db.String(16), nullable=False, server_default=db.text("'active'::character varying"))
-    initialized_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
-    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
+    name = db.Column(db.String(255), nullable=False)            # 用户名称
+    email = db.Column(db.String(255), nullable=False)           # 电子邮箱，用于登录和通知
+    password = db.Column(db.String(255), nullable=True)         # 加密后的密码
+    password_salt = db.Column(db.String(255), nullable=True)    # 密码盐，用于密码加密
+    avatar = db.Column(db.String(255))                          # 头像URL
+    interface_language = db.Column(db.String(255))              # 界面语言首选项
+    interface_theme = db.Column(db.String(255))                 # 界面主题首选项
+    timezone = db.Column(db.String(255))                        # 用户时区设置
+    last_login_at = db.Column(db.DateTime)                      # 最后登录时间
+    last_login_ip = db.Column(db.String(255))                   # 最后登录IP
+    last_active_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 最后活动时间
+    status = db.Column(db.String(16), nullable=False, server_default=db.text("'active'::character varying"))  # 账户状态
+    initialized_at = db.Column(db.DateTime)                     # 账户初始化完成时间
+    created_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 创建时间
+    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 更新时间
 
     @property
     def is_password_set(self):
+        """
+        检查账户是否已设置密码
+        
+        :return: 布尔值，True表示已设置密码
+        """
         return self.password is not None
 
     @property
     def current_tenant(self):
+        """
+        获取当前用户选择的租户
+        
+        :return: 当前租户对象
+        """
         # FIXME: fix the type error later, because the type is important maybe cause some bugs
         return self._current_tenant  # type: ignore
 
     @current_tenant.setter
     def current_tenant(self, value: "Tenant"):
+        """
+        设置当前租户，同时更新租户角色信息
+        
+        :param value: 要设置的租户对象
+        """
         tenant = value
         ta = TenantAccountJoin.query.filter_by(tenant_id=tenant.id, account_id=self.id).first()
         if ta:
@@ -62,10 +88,20 @@ class Account(UserMixin, Base):
 
     @property
     def current_tenant_id(self) -> str | None:
+        """
+        获取当前租户ID
+        
+        :return: 当前租户ID，如无则返回None
+        """
         return self._current_tenant.id if self._current_tenant else None
 
     @current_tenant_id.setter
     def current_tenant_id(self, value: str):
+        """
+        通过租户ID设置当前租户
+        
+        :param value: 租户ID
+        """
         try:
             tenant_account_join = (
                 db.session.query(Tenant, TenantAccountJoin)
@@ -87,14 +123,33 @@ class Account(UserMixin, Base):
 
     @property
     def current_role(self):
+        """
+        获取用户在当前租户中的角色
+        
+        :return: 角色字符串
+        """
         return self._current_tenant.current_role
 
     def get_status(self) -> AccountStatus:
+        """
+        获取账户状态的枚举值
+        
+        :return: AccountStatus枚举对象
+        """
         status_str = self.status
         return AccountStatus(status_str)
 
     @classmethod
     def get_by_openid(cls, provider: str, open_id: str):
+        """
+        通过第三方身份提供商和OpenID查找账户
+        
+        用于第三方登录功能，查找已关联的账户
+        
+        :param provider: 身份提供商标识
+        :param open_id: 在提供商系统中的唯一ID
+        :return: 账户对象，如不存在则返回None
+        """
         account_integrate = (
             db.session.query(AccountIntegrate)
             .filter(AccountIntegrate.provider == provider, AccountIntegrate.open_id == open_id)
@@ -107,39 +162,80 @@ class Account(UserMixin, Base):
     # check current_user.current_tenant.current_role in ['admin', 'owner']
     @property
     def is_admin_or_owner(self):
+        """
+        检查用户是否为管理员或所有者
+        
+        :return: 布尔值，True表示用户有管理权限
+        """
         return TenantAccountRole.is_privileged_role(self._current_tenant.current_role)
 
     @property
     def is_admin(self):
+        """
+        检查用户是否为管理员
+        
+        :return: 布尔值，True表示用户是管理员
+        """
         return TenantAccountRole.is_admin_role(self._current_tenant.current_role)
 
     @property
     def is_editor(self):
+        """
+        检查用户是否有编辑权限
+        
+        :return: 布尔值，True表示用户有编辑权限
+        """
         return TenantAccountRole.is_editing_role(self._current_tenant.current_role)
 
     @property
     def is_dataset_editor(self):
+        """
+        检查用户是否有数据集编辑权限
+        
+        :return: 布尔值，True表示用户可以编辑数据集
+        """
         return TenantAccountRole.is_dataset_edit_role(self._current_tenant.current_role)
 
     @property
     def is_dataset_operator(self):
+        """
+        检查用户是否为数据集操作员
+        
+        :return: 布尔值，True表示用户是数据集操作员
+        """
         return self._current_tenant.current_role == TenantAccountRole.DATASET_OPERATOR
 
 
 class TenantStatus(enum.StrEnum):
-    NORMAL = "normal"
-    ARCHIVE = "archive"
+    """
+    租户状态枚举
+    
+    定义租户可能的状态
+    """
+    NORMAL = "normal"    # 正常状态，租户可正常使用
+    ARCHIVE = "archive"  # 归档状态，租户被禁用或暂停
 
 
 class TenantAccountRole(enum.StrEnum):
-    OWNER = "owner"
-    ADMIN = "admin"
-    EDITOR = "editor"
-    NORMAL = "normal"
-    DATASET_OPERATOR = "dataset_operator"
+    """
+    租户账户角色枚举
+    
+    定义用户在租户中可能的角色和权限级别
+    """
+    OWNER = "owner"              # 所有者，拥有所有权限
+    ADMIN = "admin"              # 管理员，拥有大部分管理权限
+    EDITOR = "editor"            # 编辑者，可以创建和编辑内容
+    NORMAL = "normal"            # 普通用户，基础使用权限
+    DATASET_OPERATOR = "dataset_operator"  # 数据集操作员，专注于数据集管理
 
     @staticmethod
     def is_valid_role(role: str) -> bool:
+        """
+        检查角色是否为有效角色
+        
+        :param role: 角色字符串
+        :return: 布尔值，True表示是有效角色
+        """
         if not role:
             return False
         return role in {
@@ -152,18 +248,36 @@ class TenantAccountRole(enum.StrEnum):
 
     @staticmethod
     def is_privileged_role(role: str) -> bool:
+        """
+        检查是否为特权角色（所有者或管理员）
+        
+        :param role: 角色字符串
+        :return: 布尔值，True表示是特权角色
+        """
         if not role:
             return False
         return role in {TenantAccountRole.OWNER, TenantAccountRole.ADMIN}
 
     @staticmethod
     def is_admin_role(role: str) -> bool:
+        """
+        检查是否为管理员角色
+        
+        :param role: 角色字符串
+        :return: 布尔值，True表示是管理员角色
+        """
         if not role:
             return False
         return role == TenantAccountRole.ADMIN
 
     @staticmethod
     def is_non_owner_role(role: str) -> bool:
+        """
+        检查是否为非所有者角色
+        
+        :param role: 角色字符串
+        :return: 布尔值，True表示不是所有者角色
+        """
         if not role:
             return False
         return role in {
@@ -175,12 +289,24 @@ class TenantAccountRole(enum.StrEnum):
 
     @staticmethod
     def is_editing_role(role: str) -> bool:
+        """
+        检查是否有编辑权限的角色
+        
+        :param role: 角色字符串
+        :return: 布尔值，True表示有编辑权限
+        """
         if not role:
             return False
         return role in {TenantAccountRole.OWNER, TenantAccountRole.ADMIN, TenantAccountRole.EDITOR}
 
     @staticmethod
     def is_dataset_edit_role(role: str) -> bool:
+        """
+        检查是否有数据集编辑权限的角色
+        
+        :param role: 角色字符串
+        :return: 布尔值，True表示有数据集编辑权限
+        """
         if not role:
             return False
         return role in {
@@ -192,12 +318,18 @@ class TenantAccountRole(enum.StrEnum):
 
 
 class Tenant(db.Model):  # type: ignore[name-defined]
+    """
+    租户模型
+    
+    代表系统中的一个工作区或组织，包含多个用户和资源。
+    租户是资源隔离的主要单位，不同租户的数据互相独立。
+    """
     __tablename__ = "tenants"
     __table_args__ = (db.PrimaryKeyConstraint("id", name="tenant_pkey"),)
 
     id = db.Column(StringUUID, server_default=db.text("uuid_generate_v4()"))
-    name = db.Column(db.String(255), nullable=False)
-    encrypt_public_key = db.Column(db.Text)
+    name = db.Column(db.String(255), nullable=False)    # 租户名称
+    encrypt_public_key = db.Column(db.Text)             # 加密公钥，用于加密敏感数据
     plan = db.Column(db.String(255), nullable=False, server_default=db.text("'basic'::character varying"))
     status = db.Column(db.String(255), nullable=False, server_default=db.text("'normal'::character varying"))
     custom_config = db.Column(db.Text)

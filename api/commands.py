@@ -39,6 +39,13 @@ def reset_password(email, new_password, password_confirm):
     """
     Reset password of owner account
     Only available in SELF_HOSTED mode
+    
+    重置账户密码
+    仅在自托管模式下可用
+    
+    :param email: 需要重置密码的账户邮箱
+    :param new_password: 新密码
+    :param password_confirm: 确认新密码
     """
     if str(new_password).strip() != str(password_confirm).strip():
         click.echo(click.style("Passwords do not match.", fg="red"))
@@ -56,11 +63,11 @@ def reset_password(email, new_password, password_confirm):
         click.echo(click.style("Invalid password. Must match {}".format(password_pattern), fg="red"))
         return
 
-    # generate password salt
+    # 生成密码盐
     salt = secrets.token_bytes(16)
     base64_salt = base64.b64encode(salt).decode()
 
-    # encrypt password with salt
+    # 使用盐加密密码
     password_hashed = hash_password(new_password, salt)
     base64_password_hashed = base64.b64encode(password_hashed).decode()
     account.password = base64_password_hashed
@@ -77,6 +84,13 @@ def reset_email(email, new_email, email_confirm):
     """
     Replace account email
     :return:
+    
+    更新账户邮箱地址
+    
+    :param email: 当前账户邮箱
+    :param new_email: 新邮箱地址
+    :param email_confirm: 确认新邮箱地址
+    :return: 无返回值
     """
     if str(new_email).strip() != str(email_confirm).strip():
         click.echo(click.style("New emails do not match.", fg="red"))
@@ -116,6 +130,10 @@ def reset_encrypt_key_pair():
     Reset the encrypted key pair of workspace for encrypt LLM credentials.
     After the reset, all LLM credentials will become invalid, requiring re-entry.
     Only support SELF_HOSTED mode.
+    
+    重置工作区的非对称密钥对，用于加密LLM凭证。
+    重置后，所有LLM凭证将失效，需要重新输入。
+    仅支持自托管模式。
     """
     if dify_config.EDITION != "SELF_HOSTED":
         click.echo(click.style("This command is only for SELF_HOSTED installations.", fg="red"))
@@ -144,6 +162,13 @@ def reset_encrypt_key_pair():
 @click.command("vdb-migrate", help="Migrate vector db.")
 @click.option("--scope", default="all", prompt=False, help="The scope of vector database to migrate, Default is All.")
 def vdb_migrate(scope: str):
+    """
+    迁移向量数据库
+    
+    根据指定的范围(知识库、注释或全部)将数据从当前向量数据库迁移到目标向量数据库。
+    
+    :param scope: 迁移范围，可选值: 'knowledge'(知识库), 'annotation'(注释), 'all'(全部)
+    """
     if scope in {"knowledge", "all"}:
         migrate_knowledge_vector_database()
     if scope in {"annotation", "all"}:
@@ -153,6 +178,9 @@ def vdb_migrate(scope: str):
 def migrate_annotation_vector_database():
     """
     Migrate annotation datas to target vector database .
+    
+    将注释数据迁移到目标向量数据库。
+    此函数遍历所有启用了注释功能的应用，并迁移它们的注释数据。
     """
     click.echo(click.style("Starting annotation data migration.", fg="green"))
     create_count = 0
@@ -161,7 +189,7 @@ def migrate_annotation_vector_database():
     page = 1
     while True:
         try:
-            # get apps info
+            # 获取应用信息
             per_page = 50
             apps = (
                 db.session.query(App)
@@ -192,7 +220,7 @@ def migrate_annotation_vector_database():
                     skipped_count = skipped_count + 1
                     click.echo("App annotation setting disabled: {}".format(app.id))
                     continue
-                # get dataset_collection_binding info
+                # 获取数据集集合绑定信息
                 dataset_collection_binding = (
                     db.session.query(DatasetCollectionBinding)
                     .filter(DatasetCollectionBinding.id == app_annotation_setting.collection_binding_id)

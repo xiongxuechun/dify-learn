@@ -10,25 +10,53 @@ from core.model_runtime.entities.model_entities import ModelType
 
 
 class HostingQuota(BaseModel):
+    """
+    托管服务配额基类
+    
+    定义托管服务提供商的基本配额属性。
+    作为不同类型配额模型的基类。
+    """
     quota_type: ProviderQuotaType
     restrict_models: list[RestrictModel] = []
 
 
 class TrialHostingQuota(HostingQuota):
+    """
+    试用配额模型
+    
+    用于定义试用版用户可以使用的模型和使用限制。
+    通常包含使用次数或令牌数量限制。
+    """
     quota_type: ProviderQuotaType = ProviderQuotaType.TRIAL
     quota_limit: int = 0
     """Quota limit for the hosting provider models. -1 means unlimited."""
 
 
 class PaidHostingQuota(HostingQuota):
+    """
+    付费配额模型
+    
+    用于定义付费用户可以使用的模型，通常没有使用限制。
+    """
     quota_type: ProviderQuotaType = ProviderQuotaType.PAID
 
 
 class FreeHostingQuota(HostingQuota):
+    """
+    免费配额模型
+    
+    用于定义所有用户均可免费使用的模型。
+    """
     quota_type: ProviderQuotaType = ProviderQuotaType.FREE
 
 
 class HostingProvider(BaseModel):
+    """
+    托管服务提供商配置
+    
+    包含服务提供商的凭证、配额和状态等基本信息。
+    用于管理特定AI服务提供商的托管访问方式。
+    """
     enabled: bool = False
     credentials: Optional[dict] = None
     quota_unit: Optional[QuotaUnit] = None
@@ -36,19 +64,43 @@ class HostingProvider(BaseModel):
 
 
 class HostedModerationConfig(BaseModel):
+    """
+    托管内容审核配置
+    
+    定义用于内容审核的托管服务配置。
+    """
     enabled: bool = False
     providers: list[str] = []
 
 
 class HostingConfiguration:
+    """
+    托管服务配置管理类
+    
+    管理所有托管服务提供商的配置信息。
+    在云托管版本中，用于初始化和管理各种LLM提供商的访问凭证和配额。
+    """
     provider_map: dict[str, HostingProvider]
     moderation_config: Optional[HostedModerationConfig] = None
 
     def __init__(self) -> None:
+        """
+        初始化托管配置
+        
+        创建空的提供商映射和审核配置。
+        """
         self.provider_map = {}
         self.moderation_config = None
 
     def init_app(self, app: Flask) -> None:
+        """
+        初始化应用的托管配置
+        
+        根据环境配置初始化各种LLM提供商的托管配置。
+        仅在云托管版本中生效。
+        
+        :param app: Flask应用实例
+        """
         if dify_config.EDITION != "CLOUD":
             return
 
@@ -63,6 +115,13 @@ class HostingConfiguration:
 
     @staticmethod
     def init_azure_openai() -> HostingProvider:
+        """
+        初始化Azure OpenAI托管配置
+        
+        根据环境变量配置Azure OpenAI服务的访问凭证和配额。
+        
+        :return: Azure OpenAI托管提供商配置
+        """
         quota_unit = QuotaUnit.TIMES
         if dify_config.HOSTED_AZURE_OPENAI_ENABLED:
             credentials = {
@@ -126,6 +185,14 @@ class HostingConfiguration:
         )
 
     def init_openai(self) -> HostingProvider:
+        """
+        初始化OpenAI托管配置
+        
+        根据环境变量配置OpenAI服务的访问凭证、试用和付费配额。
+        支持同时配置试用和付费两种模式。
+        
+        :return: OpenAI托管提供商配置
+        """
         quota_unit = QuotaUnit.CREDITS
         quotas: list[HostingQuota] = []
 
@@ -160,6 +227,14 @@ class HostingConfiguration:
 
     @staticmethod
     def init_anthropic() -> HostingProvider:
+        """
+        初始化Anthropic托管配置
+        
+        根据环境变量配置Anthropic服务的访问凭证和配额。
+        支持Claude系列模型的托管访问。
+        
+        :return: Anthropic托管提供商配置
+        """
         quota_unit = QuotaUnit.TOKENS
         quotas: list[HostingQuota] = []
 
@@ -189,13 +264,20 @@ class HostingConfiguration:
 
     @staticmethod
     def init_minimax() -> HostingProvider:
+        """
+        初始化MiniMax托管配置
+        
+        配置MiniMax服务的访问方式，通常作为免费服务提供。
+        
+        :return: MiniMax托管提供商配置
+        """
         quota_unit = QuotaUnit.TOKENS
         if dify_config.HOSTED_MINIMAX_ENABLED:
             quotas: list[HostingQuota] = [FreeHostingQuota()]
 
             return HostingProvider(
                 enabled=True,
-                credentials=None,  # use credentials from the provider
+                credentials=None,  # 使用提供商默认凭证
                 quota_unit=quota_unit,
                 quotas=quotas,
             )

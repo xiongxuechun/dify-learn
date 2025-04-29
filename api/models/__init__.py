@@ -1,3 +1,22 @@
+"""
+数据库模型定义模块
+
+这个模块集中导出所有数据库模型类，便于其他模块导入使用。
+模型按照功能分组到不同的子模块中：
+- account: 账户和租户相关模型
+- api_based_extension: API扩展相关模型
+- dataset: 数据集和知识库相关模型
+- engine: 数据库引擎和连接
+- enums: 通用枚举类型
+- model: 核心应用模型
+- provider: 模型提供商相关模型
+- source: 数据源相关模型
+- task: 异步任务相关模型
+- tools: 工具和集成相关模型
+- web: Web界面相关模型
+- workflow: 工作流相关模型
+"""
+
 from .account import (
     Account,
     AccountIntegrate,
