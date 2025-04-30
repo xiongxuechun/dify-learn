@@ -1,7 +1,6 @@
 import os
 import time
 
-from configs import dify_config
 from dify_app import DifyApp
 
 

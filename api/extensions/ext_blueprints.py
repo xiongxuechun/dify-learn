@@ -14,11 +14,11 @@ def init_app(app: DifyApp):
     # 导入蓝图模块
     from flask_cors import CORS  # type: ignore
 
-    from controllers.console import bp as console_app_bp     # 控制台API蓝图
-    from controllers.files import bp as files_bp             # 文件处理API蓝图  
-    from controllers.inner_api import bp as inner_api_bp     # 内部API蓝图
-    from controllers.service_api import bp as service_api_bp # 服务API蓝图
-    from controllers.web import bp as web_bp                 # Web页面API蓝图
+    from controllers.console import bp as console_app_bp  # 控制台API蓝图
+    from controllers.files import bp as files_bp  # 文件处理API蓝图  
+    from controllers.inner_api import bp as inner_api_bp  # 内部API蓝图
+    from controllers.service_api import bp as service_api_bp  # 服务API蓝图
+    from controllers.web import bp as web_bp  # Web页面API蓝图
 
     # 配置服务API的CORS和注册蓝图
     CORS(

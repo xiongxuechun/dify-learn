@@ -95,29 +95,29 @@ def initialize_extensions(app: DifyApp):
     :param app: 待初始化扩展的应用实例
     """
     from extensions import (
-        ext_app_metrics,        # 应用指标监控
-        ext_blueprints,         # 蓝图/路由注册
-        ext_celery,             # Celery异步任务
-        ext_code_based_extension, # 基于代码的扩展
-        ext_commands,           # Flask命令行
-        ext_compress,           # 响应压缩
-        ext_database,           # 数据库连接
-        ext_hosting_provider,   # 托管服务提供商
-        ext_import_modules,     # 模块导入
-        ext_logging,            # 日志配置
-        ext_login,              # 用户登录
-        ext_mail,               # 电子邮件
-        ext_migrate,            # 数据库迁移
-        ext_otel,               # OpenTelemetry监控
-        ext_otel_patch,         # OpenTelemetry补丁
-        ext_proxy_fix,          # 代理修复
-        ext_redis,              # Redis缓存
-        ext_repositories,       # 数据仓库
-        ext_sentry,             # Sentry错误跟踪
-        ext_set_secretkey,      # 密钥设置
-        ext_storage,            # 文件存储
-        ext_timezone,           # 时区设置
-        ext_warnings,           # 警告处理
+        ext_app_metrics,  # 应用指标监控
+        ext_blueprints,  # 蓝图/路由注册
+        ext_celery,  # Celery异步任务
+        ext_code_based_extension,  # 基于代码的扩展
+        ext_commands,  # Flask命令行
+        ext_compress,  # 响应压缩
+        ext_database,  # 数据库连接
+        ext_hosting_provider,  # 托管服务提供商
+        ext_import_modules,  # 模块导入
+        ext_logging,  # 日志配置
+        ext_login,  # 用户登录
+        ext_mail,  # 电子邮件
+        ext_migrate,  # 数据库迁移
+        ext_otel,  # OpenTelemetry监控
+        ext_otel_patch,  # OpenTelemetry补丁
+        ext_proxy_fix,  # 代理修复
+        ext_redis,  # Redis缓存
+        ext_repositories,  # 数据仓库
+        ext_sentry,  # Sentry错误跟踪
+        ext_set_secretkey,  # 密钥设置
+        ext_storage,  # 文件存储
+        ext_timezone,  # 时区设置
+        ext_warnings,  # 警告处理
     )
 
     # 扩展初始化顺序，确保依赖正确

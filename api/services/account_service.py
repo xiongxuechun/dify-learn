@@ -38,7 +38,6 @@ from extensions.ext_redis import redis_client
 from libs.helper import RateLimiter, TokenManager
 from libs.passport import PassportService
 from libs.password import compare_password, hash_password, valid_password
-from libs.rsa import generate_key_pair
 from models.account import (
     Account,
     AccountIntegrate,
@@ -48,7 +47,6 @@ from models.account import (
     TenantAccountRole,
     TenantStatus,
 )
-from models.model import DifySetup
 from services.billing_service import BillingService
 from services.errors.account import (
     AccountAlreadyInTenantError,

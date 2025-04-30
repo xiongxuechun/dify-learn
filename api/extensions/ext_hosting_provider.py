@@ -1,5 +1,5 @@
-from dify_app import DifyApp
 from core.hosting_configuration import HostingConfiguration
+from dify_app import DifyApp
 
 # 创建托管配置实例
 hosting_configuration = HostingConfiguration()
