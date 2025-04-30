@@ -37,15 +37,16 @@ from services.plugin.plugin_migration import PluginMigration
 @click.option("--password-confirm", prompt=True, help="Confirm new password")
 def reset_password(email, new_password, password_confirm):
     """
-    Reset password of owner account
-    Only available in SELF_HOSTED mode
-    
     重置账户密码
-    仅在自托管模式下可用
+    
+    重置指定邮箱账户的密码，仅在自托管模式下可用。
+    此命令会验证两次输入的密码是否一致，并检查密码格式是否符合要求。
+    重置后的密码会经过加密处理后存储在数据库中。
     
     :param email: 需要重置密码的账户邮箱
     :param new_password: 新密码
     :param password_confirm: 确认新密码
+    :return: 无返回值，直接打印操作结果
     """
     if str(new_password).strip() != str(password_confirm).strip():
         click.echo(click.style("Passwords do not match.", fg="red"))
@@ -82,15 +83,15 @@ def reset_password(email, new_password, password_confirm):
 @click.option("--email-confirm", prompt=True, help="Confirm new email")
 def reset_email(email, new_email, email_confirm):
     """
-    Replace account email
-    :return:
-    
     更新账户邮箱地址
+    
+    将指定账户的邮箱地址更新为新邮箱地址。
+    此命令会验证两次输入的新邮箱是否一致，并检查新邮箱格式是否有效。
     
     :param email: 当前账户邮箱
     :param new_email: 新邮箱地址
     :param email_confirm: 确认新邮箱地址
-    :return: 无返回值
+    :return: 无返回值，直接打印操作结果
     """
     if str(new_email).strip() != str(email_confirm).strip():
         click.echo(click.style("New emails do not match.", fg="red"))
@@ -127,13 +128,13 @@ def reset_email(email, new_email, email_confirm):
 )
 def reset_encrypt_key_pair():
     """
-    Reset the encrypted key pair of workspace for encrypt LLM credentials.
-    After the reset, all LLM credentials will become invalid, requiring re-entry.
-    Only support SELF_HOSTED mode.
+    重置工作区的非对称密钥对
     
-    重置工作区的非对称密钥对，用于加密LLM凭证。
+    重置用于加密LLM凭证的工作区非对称密钥对。
     重置后，所有LLM凭证将失效，需要重新输入。
-    仅支持自托管模式。
+    此命令仅支持自托管模式，会删除所有自定义提供商和提供商模型信息。
+    
+    :return: 无返回值，直接打印操作结果
     """
     if dify_config.EDITION != "SELF_HOSTED":
         click.echo(click.style("This command is only for SELF_HOSTED installations.", fg="red"))
@@ -165,9 +166,12 @@ def vdb_migrate(scope: str):
     """
     迁移向量数据库
     
-    根据指定的范围(知识库、注释或全部)将数据从当前向量数据库迁移到目标向量数据库。
+    将数据从当前向量数据库迁移到目标向量数据库。
+    可以指定迁移范围：知识库、注释或全部数据。
+    此命令常用于更换向量数据库供应商或升级版本时。
     
     :param scope: 迁移范围，可选值: 'knowledge'(知识库), 'annotation'(注释), 'all'(全部)
+    :return: 无返回值，迁移结果会通过日志输出
     """
     if scope in {"knowledge", "all"}:
         migrate_knowledge_vector_database()
@@ -177,10 +181,12 @@ def vdb_migrate(scope: str):
 
 def migrate_annotation_vector_database():
     """
-    Migrate annotation datas to target vector database .
+    迁移注释数据到目标向量数据库
     
-    将注释数据迁移到目标向量数据库。
-    此函数遍历所有启用了注释功能的应用，并迁移它们的注释数据。
+    遍历所有启用了注释功能的应用，并迁移它们的注释数据到目标向量数据库。
+    此函数会逐页处理应用，确保大量数据的迁移过程平稳进行。
+    
+    :return: 无返回值，迁移进度和结果会通过日志输出
     """
     click.echo(click.style("Starting annotation data migration.", fg="green"))
     create_count = 0
@@ -189,7 +195,7 @@ def migrate_annotation_vector_database():
     page = 1
     while True:
         try:
-            # 获取应用信息
+            # 获取应用信息，分页处理
             per_page = 50
             apps = (
                 db.session.query(App)
@@ -199,89 +205,96 @@ def migrate_annotation_vector_database():
                 .offset((page - 1) * per_page)
                 .all()
             )
+            
+            # 如果没有更多应用，结束迁移
             if not apps:
                 break
-        except NotFound:
-            break
-
-        page += 1
-        for app in apps:
-            total_count = total_count + 1
-            click.echo(
-                f"Processing the {total_count} app {app.id}. " + f"{create_count} created, {skipped_count} skipped."
-            )
-            try:
-                click.echo("Creating app annotation index: {}".format(app.id))
-                app_annotation_setting = (
-                    db.session.query(AppAnnotationSetting).filter(AppAnnotationSetting.app_id == app.id).first()
-                )
-
-                if not app_annotation_setting:
-                    skipped_count = skipped_count + 1
-                    click.echo("App annotation setting disabled: {}".format(app.id))
-                    continue
-                # 获取数据集集合绑定信息
-                dataset_collection_binding = (
-                    db.session.query(DatasetCollectionBinding)
-                    .filter(DatasetCollectionBinding.id == app_annotation_setting.collection_binding_id)
-                    .first()
-                )
-                if not dataset_collection_binding:
-                    click.echo("App annotation collection binding not found: {}".format(app.id))
-                    continue
-                annotations = db.session.query(MessageAnnotation).filter(MessageAnnotation.app_id == app.id).all()
-                dataset = Dataset(
-                    id=app.id,
-                    tenant_id=app.tenant_id,
-                    indexing_technique="high_quality",
-                    embedding_model_provider=dataset_collection_binding.provider_name,
-                    embedding_model=dataset_collection_binding.model_name,
-                    collection_binding_id=dataset_collection_binding.id,
-                )
-                documents = []
-                if annotations:
-                    for annotation in annotations:
-                        document = Document(
-                            page_content=annotation.question,
-                            metadata={"annotation_id": annotation.id, "app_id": app.id, "doc_id": annotation.id},
-                        )
-                        documents.append(document)
-
-                vector = Vector(dataset, attributes=["doc_id", "annotation_id", "app_id"])
-                click.echo(f"Migrating annotations for app: {app.id}.")
-
-                try:
-                    vector.delete()
-                    click.echo(click.style(f"Deleted vector index for app {app.id}.", fg="green"))
-                except Exception as e:
-                    click.echo(click.style(f"Failed to delete vector index for app {app.id}.", fg="red"))
-                    raise e
-                if documents:
-                    try:
-                        click.echo(
-                            click.style(
-                                f"Creating vector index with {len(documents)} annotations for app {app.id}.",
-                                fg="green",
-                            )
-                        )
-                        vector.create(documents)
-                        click.echo(click.style(f"Created vector index for app {app.id}.", fg="green"))
-                    except Exception as e:
-                        click.echo(click.style(f"Failed to created vector index for app {app.id}.", fg="red"))
-                        raise e
-                click.echo(f"Successfully migrated app annotation {app.id}.")
-                create_count += 1
-            except Exception as e:
+            
+            # 逐个处理应用的注释数据
+            page += 1
+            for app in apps:
+                total_count = total_count + 1
                 click.echo(
-                    click.style(
-                        "Error creating app annotation index: {} {}".format(e.__class__.__name__, str(e)), fg="red"
-                    )
+                    f"Processing the {total_count} app {app.id}. " + f"{create_count} created, {skipped_count} skipped."
                 )
-                continue
+                try:
+                    click.echo("Creating app annotation index: {}".format(app.id))
+                    app_annotation_setting = (
+                        db.session.query(AppAnnotationSetting).filter(AppAnnotationSetting.app_id == app.id).first()
+                    )
+
+                    if not app_annotation_setting:
+                        skipped_count = skipped_count + 1
+                        click.echo("App annotation setting disabled: {}".format(app.id))
+                        continue
+                    # 获取数据集集合绑定信息
+                    dataset_collection_binding = (
+                        db.session.query(DatasetCollectionBinding)
+                        .filter(DatasetCollectionBinding.id == app_annotation_setting.collection_binding_id)
+                        .first()
+                    )
+                    if not dataset_collection_binding:
+                        click.echo("App annotation collection binding not found: {}".format(app.id))
+                        continue
+                    annotations = db.session.query(MessageAnnotation).filter(MessageAnnotation.app_id == app.id).all()
+                    dataset = Dataset(
+                        id=app.id,
+                        tenant_id=app.tenant_id,
+                        indexing_technique="high_quality",
+                        embedding_model_provider=dataset_collection_binding.provider_name,
+                        embedding_model=dataset_collection_binding.model_name,
+                        collection_binding_id=dataset_collection_binding.id,
+                    )
+                    documents = []
+                    if annotations:
+                        for annotation in annotations:
+                            document = Document(
+                                page_content=annotation.question,
+                                metadata={"annotation_id": annotation.id, "app_id": app.id, "doc_id": annotation.id},
+                            )
+                            documents.append(document)
+
+                    vector = Vector(dataset, attributes=["doc_id", "annotation_id", "app_id"])
+                    click.echo(f"Migrating annotations for app: {app.id}.")
+
+                    try:
+                        vector.delete()
+                        click.echo(click.style(f"Deleted vector index for app {app.id}.", fg="green"))
+                    except Exception as e:
+                        click.echo(click.style(f"Failed to delete vector index for app {app.id}.", fg="red"))
+                        raise e
+                    if documents:
+                        try:
+                            click.echo(
+                                click.style(
+                                    f"Creating vector index with {len(documents)} annotations for app {app.id}.",
+                                    fg="green",
+                                )
+                            )
+                            vector.create(documents)
+                            click.echo(click.style(f"Created vector index for app {app.id}.", fg="green"))
+                        except Exception as e:
+                            click.echo(click.style(f"Failed to created vector index for app {app.id}.", fg="red"))
+                            raise e
+                    click.echo(f"Successfully migrated app annotation {app.id}.")
+                    create_count += 1
+                except Exception as e:
+                    click.echo(
+                        click.style(
+                            "Error creating app annotation index: {} {}".format(e.__class__.__name__, str(e)), fg="red"
+                        )
+                    )
+                    continue
+        except NotFound as e:
+            click.echo(click.style(f"Not found error during application retrieval: {str(e)}", fg="red"))
+            break
+        except Exception as e:
+            click.echo(click.style(f"Error during application retrieval: {str(e)}", fg="red"))
+            break
 
     click.echo(
         click.style(
-            f"Migration complete. Created {create_count} app annotation indexes. Skipped {skipped_count} apps.",
+            "Annotation vectors migrated successfully. {} created, {} skipped.".format(create_count, skipped_count),
             fg="green",
         )
     )

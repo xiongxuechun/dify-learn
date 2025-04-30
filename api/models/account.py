@@ -231,10 +231,10 @@ class TenantAccountRole(enum.StrEnum):
     @staticmethod
     def is_valid_role(role: str) -> bool:
         """
-        检查角色是否为有效角色
+        检查角色是否有效
         
-        :param role: 角色字符串
-        :return: 布尔值，True表示是有效角色
+        :param role: 角色名称
+        :return: 布尔值，表示角色是否有效
         """
         if not role:
             return False
@@ -249,10 +249,10 @@ class TenantAccountRole(enum.StrEnum):
     @staticmethod
     def is_privileged_role(role: str) -> bool:
         """
-        检查是否为特权角色（所有者或管理员）
+        检查角色是否具有特权
         
-        :param role: 角色字符串
-        :return: 布尔值，True表示是特权角色
+        :param role: 角色名称
+        :return: 布尔值，表示角色是否具有管理特权
         """
         if not role:
             return False
@@ -261,10 +261,10 @@ class TenantAccountRole(enum.StrEnum):
     @staticmethod
     def is_admin_role(role: str) -> bool:
         """
-        检查是否为管理员角色
+        检查角色是否为管理员
         
-        :param role: 角色字符串
-        :return: 布尔值，True表示是管理员角色
+        :param role: 角色名称
+        :return: 布尔值，表示角色是否为管理员
         """
         if not role:
             return False
@@ -273,10 +273,10 @@ class TenantAccountRole(enum.StrEnum):
     @staticmethod
     def is_non_owner_role(role: str) -> bool:
         """
-        检查是否为非所有者角色
+        检查角色是否为非所有者角色
         
-        :param role: 角色字符串
-        :return: 布尔值，True表示不是所有者角色
+        :param role: 角色名称
+        :return: 布尔值，表示角色是否为非所有者角色
         """
         if not role:
             return False
@@ -290,10 +290,10 @@ class TenantAccountRole(enum.StrEnum):
     @staticmethod
     def is_editing_role(role: str) -> bool:
         """
-        检查是否有编辑权限的角色
+        检查角色是否有编辑权限
         
-        :param role: 角色字符串
-        :return: 布尔值，True表示有编辑权限
+        :param role: 角色名称
+        :return: 布尔值，表示角色是否有编辑权限
         """
         if not role:
             return False
@@ -302,10 +302,10 @@ class TenantAccountRole(enum.StrEnum):
     @staticmethod
     def is_dataset_edit_role(role: str) -> bool:
         """
-        检查是否有数据集编辑权限的角色
+        检查角色是否有数据集编辑权限
         
-        :param role: 角色字符串
-        :return: 布尔值，True表示有数据集编辑权限
+        :param role: 角色名称
+        :return: 布尔值，表示角色是否有数据集编辑权限
         """
         if not role:
             return False
@@ -345,14 +345,29 @@ class Tenant(db.Model):  # type: ignore[name-defined]
 
     @property
     def custom_config_dict(self) -> dict:
+        """
+        获取自定义配置的字典形式
+        
+        :return: 配置字典
+        """
         return json.loads(self.custom_config) if self.custom_config else {}
 
     @custom_config_dict.setter
     def custom_config_dict(self, value: dict):
+        """
+        设置自定义配置
+        
+        :param value: 配置字典
+        """
         self.custom_config = json.dumps(value)
 
 
 class TenantAccountJoin(db.Model):  # type: ignore[name-defined]
+    """
+    租户账户关联模型
+    
+    表示账户和租户之间的多对多关系，记录账户在租户中的角色和状态。
+    """
     __tablename__ = "tenant_account_joins"
     __table_args__ = (
         db.PrimaryKeyConstraint("id", name="tenant_account_join_pkey"),
@@ -362,16 +377,21 @@ class TenantAccountJoin(db.Model):  # type: ignore[name-defined]
     )
 
     id = db.Column(StringUUID, server_default=db.text("uuid_generate_v4()"))
-    tenant_id = db.Column(StringUUID, nullable=False)
-    account_id = db.Column(StringUUID, nullable=False)
-    current = db.Column(db.Boolean, nullable=False, server_default=db.text("false"))
-    role = db.Column(db.String(16), nullable=False, server_default="normal")
-    invited_by = db.Column(StringUUID, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
-    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
+    tenant_id = db.Column(StringUUID, nullable=False)     # 租户ID
+    account_id = db.Column(StringUUID, nullable=False)    # 账户ID
+    current = db.Column(db.Boolean, nullable=False, server_default=db.text("false"))  # 是否为当前选中租户
+    role = db.Column(db.String(16), nullable=False, server_default="normal")  # 在租户中的角色
+    invited_by = db.Column(StringUUID, nullable=True)     # 邀请人ID
+    created_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 创建时间
+    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 更新时间
 
 
 class AccountIntegrate(db.Model):  # type: ignore[name-defined]
+    """
+    账户集成模型
+    
+    存储账户与第三方身份提供商的集成信息，用于第三方登录。
+    """
     __tablename__ = "account_integrates"
     __table_args__ = (
         db.PrimaryKeyConstraint("id", name="account_integrate_pkey"),
@@ -380,15 +400,20 @@ class AccountIntegrate(db.Model):  # type: ignore[name-defined]
     )
 
     id = db.Column(StringUUID, server_default=db.text("uuid_generate_v4()"))
-    account_id = db.Column(StringUUID, nullable=False)
-    provider = db.Column(db.String(16), nullable=False)
-    open_id = db.Column(db.String(255), nullable=False)
-    encrypted_token = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
-    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())
+    account_id = db.Column(StringUUID, nullable=False)      # 关联的账户ID
+    provider = db.Column(db.String(16), nullable=False)     # 提供商标识（如Google, GitHub等）
+    open_id = db.Column(db.String(255), nullable=False)     # 在提供商系统中的唯一ID
+    encrypted_token = db.Column(db.String(255), nullable=False)  # 加密的访问令牌
+    created_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 创建时间
+    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.current_timestamp())  # 更新时间
 
 
 class InvitationCode(db.Model):  # type: ignore[name-defined]
+    """
+    邀请码模型
+    
+    用于邀请新用户加入系统的邀请码记录。
+    """
     __tablename__ = "invitation_codes"
     __table_args__ = (
         db.PrimaryKeyConstraint("id", name="invitation_code_pkey"),
@@ -396,27 +421,38 @@ class InvitationCode(db.Model):  # type: ignore[name-defined]
         db.Index("invitation_codes_code_idx", "code", "status"),
     )
 
-    id = db.Column(db.Integer, nullable=False)
-    batch = db.Column(db.String(255), nullable=False)
-    code = db.Column(db.String(32), nullable=False)
-    status = db.Column(db.String(16), nullable=False, server_default=db.text("'unused'::character varying"))
-    used_at = db.Column(db.DateTime)
-    used_by_tenant_id = db.Column(StringUUID)
-    used_by_account_id = db.Column(StringUUID)
-    deprecated_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, nullable=False, server_default=db.text("CURRENT_TIMESTAMP(0)"))
+    id = db.Column(db.Integer, nullable=False)           # 邀请码ID
+    batch = db.Column(db.String(255), nullable=False)    # 批次标识，用于批量管理
+    code = db.Column(db.String(32), nullable=False)      # 邀请码
+    status = db.Column(db.String(16), nullable=False, server_default=db.text("'unused'::character varying"))  # 状态
+    used_at = db.Column(db.DateTime)                     # 使用时间
+    used_by_tenant_id = db.Column(StringUUID)            # 使用此邀请码的租户ID
+    used_by_account_id = db.Column(StringUUID)           # 使用此邀请码的账户ID
+    deprecated_at = db.Column(db.DateTime)               # 废弃时间
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.text("CURRENT_TIMESTAMP(0)"))  # 创建时间
 
 
 class TenantPluginPermission(Base):
+    """
+    租户插件权限模型
+    
+    控制租户内不同角色对插件的安装和调试权限。
+    """
     class InstallPermission(enum.StrEnum):
-        EVERYONE = "everyone"
-        ADMINS = "admins"
-        NOBODY = "noone"
+        """
+        插件安装权限枚举
+        """
+        EVERYONE = "everyone"    # 所有人都可以安装
+        ADMINS = "admins"        # 只有管理员可以安装
+        NOBODY = "noone"         # 禁止安装
 
     class DebugPermission(enum.StrEnum):
-        EVERYONE = "everyone"
-        ADMINS = "admins"
-        NOBODY = "noone"
+        """
+        插件调试权限枚举
+        """
+        EVERYONE = "everyone"    # 所有人都可以调试
+        ADMINS = "admins"        # 只有管理员可以调试
+        NOBODY = "noone"         # 禁止调试
 
     __tablename__ = "account_plugin_permissions"
     __table_args__ = (
@@ -425,8 +461,8 @@ class TenantPluginPermission(Base):
     )
 
     id: Mapped[str] = mapped_column(StringUUID, server_default=db.text("uuid_generate_v4()"))
-    tenant_id: Mapped[str] = mapped_column(StringUUID, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(StringUUID, nullable=False)  # 租户ID
     install_permission: Mapped[InstallPermission] = mapped_column(
-        db.String(16), nullable=False, server_default="everyone"
+        db.String(16), nullable=False, server_default="everyone"  # 安装权限
     )
-    debug_permission: Mapped[DebugPermission] = mapped_column(db.String(16), nullable=False, server_default="noone")
+    debug_permission: Mapped[DebugPermission] = mapped_column(db.String(16), nullable=False, server_default="noone")  # 调试权限

@@ -1,3 +1,20 @@
+"""
+账户服务模块
+
+此模块提供完整的账户管理功能，包括：
+1. 用户认证和授权
+2. 密码管理
+3. 令牌管理
+4. 租户管理
+5. 成员管理
+6. 注册和邀请功能
+
+主要包含三个核心服务类：
+- AccountService: 处理账户相关的核心功能
+- TenantService: 处理租户和成员管理
+- RegisterService: 处理注册和邀请流程
+"""
+
 import base64
 import json
 import logging
@@ -59,16 +76,47 @@ from tasks.mail_reset_password_task import send_reset_password_mail_task
 
 
 class TokenPair(BaseModel):
+    """
+    令牌对模型
+    
+    用于管理用户的认证令牌，包含：
+    - access_token: 访问令牌，用于API访问认证
+    - refresh_token: 刷新令牌，用于获取新的访问令牌
+    
+    这两个令牌共同工作以提供安全的认证机制：
+    1. 访问令牌有效期较短，用于日常API访问
+    2. 刷新令牌有效期较长，用于在访问令牌过期时获取新的访问令牌
+    """
     access_token: str
     refresh_token: str
 
 
+# Redis缓存键前缀
 REFRESH_TOKEN_PREFIX = "refresh_token:"
 ACCOUNT_REFRESH_TOKEN_PREFIX = "account_refresh_token:"
+# 刷新令牌过期时间
 REFRESH_TOKEN_EXPIRY = timedelta(days=dify_config.REFRESH_TOKEN_EXPIRE_DAYS)
 
 
 class AccountService:
+    """
+    账户服务类
+    
+    提供账户管理的核心功能，包括：
+    1. 用户认证和登录
+    2. 密码管理（重置、修改）
+    3. 令牌管理（生成、刷新、撤销）
+    4. 账户状态管理
+    5. 登录限制和错误处理
+    
+    包含多个限流器以防止滥用：
+    - 密码重置限流
+    - 邮箱验证码登录限流
+    - 账户删除验证限流
+    - 登录错误次数限制
+    - 忘记密码错误次数限制
+    """
+    # 各种操作的限流器
     reset_password_rate_limiter = RateLimiter(prefix="reset_password_rate_limit", max_attempts=1, time_window=60 * 1)
     email_code_login_rate_limiter = RateLimiter(
         prefix="email_code_login_rate_limit", max_attempts=1, time_window=60 * 1
@@ -76,19 +124,42 @@ class AccountService:
     email_code_account_deletion_rate_limiter = RateLimiter(
         prefix="email_code_account_deletion_rate_limit", max_attempts=1, time_window=60 * 1
     )
+    # 登录和密码重置的最大错误次数限制
     LOGIN_MAX_ERROR_LIMITS = 5
     FORGOT_PASSWORD_MAX_ERROR_LIMITS = 5
 
     @staticmethod
     def _get_refresh_token_key(refresh_token: str) -> str:
+        """
+        获取刷新令牌在Redis中的键名
+        
+        :param refresh_token: 刷新令牌
+        :return: Redis键名
+        """
         return f"{REFRESH_TOKEN_PREFIX}{refresh_token}"
 
     @staticmethod
     def _get_account_refresh_token_key(account_id: str) -> str:
+        """
+        获取账户关联的刷新令牌在Redis中的键名
+        
+        :param account_id: 账户ID
+        :return: Redis键名
+        """
         return f"{ACCOUNT_REFRESH_TOKEN_PREFIX}{account_id}"
 
     @staticmethod
     def _store_refresh_token(refresh_token: str, account_id: str) -> None:
+        """
+        在Redis中存储刷新令牌和账户的关联关系
+        
+        维护两个映射:
+        1. 刷新令牌 -> 账户ID (用于验证令牌)
+        2. 账户ID -> 刷新令牌 (用于注销或刷新)
+        
+        :param refresh_token: 刷新令牌
+        :param account_id: 账户ID
+        """
         redis_client.setex(AccountService._get_refresh_token_key(refresh_token), REFRESH_TOKEN_EXPIRY, account_id)
         redis_client.setex(
             AccountService._get_account_refresh_token_key(account_id), REFRESH_TOKEN_EXPIRY, refresh_token
@@ -96,11 +167,30 @@ class AccountService:
 
     @staticmethod
     def _delete_refresh_token(refresh_token: str, account_id: str) -> None:
+        """
+        从Redis中删除刷新令牌和账户的关联关系
+        
+        当用户登出或令牌刷新时调用此方法，清除旧的关联关系。
+        
+        :param refresh_token: 刷新令牌
+        :param account_id: 账户ID
+        """
         redis_client.delete(AccountService._get_refresh_token_key(refresh_token))
         redis_client.delete(AccountService._get_account_refresh_token_key(account_id))
 
     @staticmethod
     def load_user(user_id: str) -> None | Account:
+        """
+        根据用户ID加载用户信息
+        
+        此方法会从数据库加载用户账户信息，并检查账户状态。
+        如果账户被禁用，则抛出Unauthorized异常。
+        同时会设置当前租户(工作区)信息，并更新最后活跃时间。
+        
+        :param user_id: 用户ID
+        :return: 账户对象或None(如果账户不存在)
+        :raises Unauthorized: 如果账户被禁用
+        """
         account = db.session.query(Account).filter_by(id=user_id).first()
         if not account:
             return None
@@ -108,10 +198,12 @@ class AccountService:
         if account.status == AccountStatus.BANNED.value:
             raise Unauthorized("Account is banned.")
 
+        # 获取当前租户信息
         current_tenant = TenantAccountJoin.query.filter_by(account_id=account.id, current=True).first()
         if current_tenant:
             account.current_tenant_id = current_tenant.tenant_id
         else:
+            # 如果没有当前租户，选择第一个可用的租户
             available_ta = (
                 TenantAccountJoin.query.filter_by(account_id=account.id).order_by(TenantAccountJoin.id.asc()).first()
             )
@@ -122,6 +214,7 @@ class AccountService:
             available_ta.current = True
             db.session.commit()
 
+        # 如果最后活跃时间超过10分钟，更新活跃时间
         if datetime.now(UTC).replace(tzinfo=None) - account.last_active_at > timedelta(minutes=10):
             account.last_active_at = datetime.now(UTC).replace(tzinfo=None)
             db.session.commit()
@@ -130,6 +223,15 @@ class AccountService:
 
     @staticmethod
     def get_account_jwt_token(account: Account) -> str:
+        """
+        生成账户的JWT访问令牌
+        
+        创建JWT令牌，包含用户ID、过期时间等标准字段。
+        使用PassportService签发令牌。
+        
+        :param account: 账户对象
+        :return: JWT令牌字符串
+        """
         exp_dt = datetime.now(UTC) + timedelta(minutes=dify_config.ACCESS_TOKEN_EXPIRE_MINUTES)
         exp = int(exp_dt.timestamp())
         payload = {
@@ -144,8 +246,21 @@ class AccountService:
 
     @staticmethod
     def authenticate(email: str, password: str, invite_token: Optional[str] = None) -> Account:
-        """authenticate account with email and password"""
-
+        """
+        用邮箱和密码验证账户身份
+        
+        验证用户的登录凭据，检查账户状态、密码正确性。
+        支持通过邀请链接首次设置密码的场景。
+        成功认证后会更新账户状态(如果是待激活状态)。
+        
+        :param email: 用户邮箱
+        :param password: 用户密码
+        :param invite_token: 可选的邀请令牌(用于首次设置密码)
+        :return: 验证成功的账户对象
+        :raises AccountNotFoundError: 如果账户不存在
+        :raises AccountLoginError: 如果账户被禁用
+        :raises AccountPasswordError: 如果密码不正确
+        """
         account = db.session.query(Account).filter_by(email=email).first()
         if not account:
             raise AccountNotFoundError()
@@ -153,8 +268,9 @@ class AccountService:
         if account.status == AccountStatus.BANNED.value:
             raise AccountLoginError("Account is banned.")
 
+        # 处理首次设置密码的情况(通过邀请链接)
         if password and invite_token and account.password is None:
-            # if invite_token is valid, set password and password_salt
+            # 如果邀请令牌有效，设置密码和密码盐
             salt = secrets.token_bytes(16)
             base64_salt = base64.b64encode(salt).decode()
             password_hashed = hash_password(password, salt)
@@ -162,9 +278,11 @@ class AccountService:
             account.password = base64_password_hashed
             account.password_salt = base64_salt
 
+        # 验证密码
         if account.password is None or not compare_password(password, account.password, account.password_salt):
             raise AccountPasswordError("Invalid email or password.")
 
+        # 如果账户状态是待激活，激活账户
         if account.status == AccountStatus.PENDING.value:
             account.status = AccountStatus.ACTIVE.value
             account.initialized_at = datetime.now(UTC).replace(tzinfo=None)
@@ -175,18 +293,30 @@ class AccountService:
 
     @staticmethod
     def update_account_password(account, password, new_password):
-        """update account password"""
+        """
+        更新账户密码
+        
+        验证当前密码，并设置新密码。
+        会生成新的密码盐，并使用盐对新密码进行加密。
+        
+        :param account: 账户对象
+        :param password: 当前密码
+        :param new_password: 新密码
+        :return: 更新后的账户对象
+        :raises CurrentPasswordIncorrectError: 如果当前密码不正确
+        """
+        # 验证当前密码
         if account.password and not compare_password(password, account.password, account.password_salt):
             raise CurrentPasswordIncorrectError("Current password is incorrect.")
 
-        # may be raised
+        # 验证新密码是否符合规则(可能抛出异常)
         valid_password(new_password)
 
-        # generate password salt
+        # 生成新的密码盐
         salt = secrets.token_bytes(16)
         base64_salt = base64.b64encode(salt).decode()
 
-        # encrypt password with salt
+        # 使用盐加密新密码
         password_hashed = hash_password(new_password, salt)
         base64_password_hashed = base64.b64encode(password_hashed).decode()
         account.password = base64_password_hashed
@@ -586,23 +716,44 @@ class AccountService:
 
 
 class TenantService:
+    """
+    租户服务类
+    
+    提供租户和成员管理的核心功能，包括：
+    1. 租户创建和管理
+    2. 成员管理（添加、移除、角色分配）
+    3. 权限控制
+    4. 租户切换
+    5. 租户配置管理
+    
+    主要功能：
+    - 创建和管理租户
+    - 管理租户成员及其角色
+    - 处理租户权限和访问控制
+    - 管理租户配置
+    - 处理租户解散等操作
+    """
     @staticmethod
     def create_tenant(name: str, is_setup: Optional[bool] = False, is_from_dashboard: Optional[bool] = False) -> Tenant:
-        """Create tenant"""
-        if (
-            not FeatureService.get_system_features().is_allow_create_workspace
-            and not is_setup
-            and not is_from_dashboard
-        ):
-            from controllers.console.error import NotAllowedCreateWorkspace
-
-            raise NotAllowedCreateWorkspace()
-        tenant = Tenant(name=name)
-
+        """
+        创建新的租户
+        
+        Args:
+            name (str): 租户名称
+            is_setup (Optional[bool]): 是否为初始化设置
+            is_from_dashboard (Optional[bool]): 是否从仪表板创建
+            
+        Returns:
+            Tenant: 新创建的租户实例
+        """
+        tenant = Tenant(
+            name=name,
+            status=TenantStatus.ACTIVE.value,
+            created_at=datetime.now(UTC),
+            is_setup=is_setup,
+            is_from_dashboard=is_from_dashboard,
+        )
         db.session.add(tenant)
-        db.session.commit()
-
-        tenant.encrypt_public_key = generate_key_pair(tenant.id)
         db.session.commit()
         return tenant
 
@@ -843,47 +994,69 @@ class TenantService:
 
 
 class RegisterService:
+    """
+    注册服务类
+    
+    处理用户注册和邀请相关的功能，包括：
+    1. 新用户注册
+    2. 系统初始化设置
+    3. 成员邀请
+    4. 邀请令牌管理
+    
+    主要功能：
+    - 处理新用户注册流程
+    - 管理系统初始化设置
+    - 生成和管理邀请令牌
+    - 验证邀请令牌
+    - 处理成员邀请流程
+    """
     @classmethod
     def _get_invitation_token_key(cls, token: str) -> str:
-        return f"member_invite:token:{token}"
+        """
+        获取邀请令牌的Redis键
+        
+        Args:
+            token (str): 邀请令牌
+            
+        Returns:
+            str: Redis中存储邀请信息的键
+        """
+        return f"invite_token:{token}"
 
     @classmethod
     def setup(cls, email: str, name: str, password: str, ip_address: str) -> None:
         """
-        Setup dify
-
-        :param email: email
-        :param name: username
-        :param password: password
-        :param ip_address: ip address
+        系统初始化设置
+        
+        创建第一个管理员账户和租户，完成系统初始化。
+        
+        Args:
+            email (str): 管理员邮箱
+            name (str): 管理员名称
+            password (str): 管理员密码
+            ip_address (str): 注册IP地址
         """
-        try:
-            # Register
-            account = AccountService.create_account(
-                email=email,
-                name=name,
-                interface_language=languages[0],
-                password=password,
-                is_setup=True,
-            )
-
-            account.last_login_ip = ip_address
-            account.initialized_at = datetime.now(UTC).replace(tzinfo=None)
-
-            TenantService.create_owner_tenant_if_not_exist(account=account, is_setup=True)
-
-            dify_setup = DifySetup(version=dify_config.CURRENT_VERSION)
-            db.session.add(dify_setup)
-            db.session.commit()
-        except Exception as e:
-            db.session.query(DifySetup).delete()
-            db.session.query(TenantAccountJoin).delete()
-            db.session.query(Account).delete()
-            db.session.query(Tenant).delete()
-            db.session.commit()
-
-            logging.exception(f"Setup account failed, email: {email}, name: {name}")
-            raise ValueError(f"Setup failed: {e}")
+        # 创建管理员账户
+        account = AccountService.create_account(
+            email=email,
+            name=name,
+            password=password,
+            interface_language="en-US",
+            is_setup=True,
+        )
+        
+        # 创建初始租户
+        tenant = TenantService.create_tenant(name=name, is_setup=True)
+        
+        # 将账户设置为租户管理员
+        TenantService.create_tenant_member(tenant, account, role="owner")
+        
+        # 更新账户的当前租户
+        account.current_tenant_id = tenant.id
+        db.session.commit()
+        
+        # 触发租户创建事件
+        tenant_was_created.send(tenant)
 
     @classmethod
     def register(

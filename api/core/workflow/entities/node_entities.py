@@ -10,7 +10,29 @@ from models.workflow import WorkflowNodeExecutionStatus
 
 class NodeRunMetadataKey(StrEnum):
     """
-    Node Run Metadata Key.
+    节点运行元数据键枚举类
+    
+    定义节点运行过程中可能产生的各种元数据键。
+    
+    键包括：
+    - TOTAL_TOKENS: 总token数
+    - TOTAL_PRICE: 总价格
+    - CURRENCY: 货币单位
+    - TOOL_INFO: 工具信息
+    - AGENT_LOG: 代理日志
+    - ITERATION_ID: 迭代ID
+    - ITERATION_INDEX: 迭代索引
+    - LOOP_ID: 循环ID
+    - LOOP_INDEX: 循环索引
+    - PARALLEL_ID: 并行ID
+    - PARALLEL_START_NODE_ID: 并行起始节点ID
+    - PARENT_PARALLEL_ID: 父并行ID
+    - PARENT_PARALLEL_START_NODE_ID: 父并行起始节点ID
+    - PARALLEL_MODE_RUN_ID: 并行模式运行ID
+    - ITERATION_DURATION_MAP: 迭代持续时间映射
+    - LOOP_DURATION_MAP: 循环持续时间映射
+    - ERROR_STRATEGY: 错误处理策略
+    - LOOP_VARIABLE_MAP: 循环变量映射
     """
 
     TOTAL_TOKENS = "total_tokens"
@@ -35,7 +57,21 @@ class NodeRunMetadataKey(StrEnum):
 
 class NodeRunResult(BaseModel):
     """
-    Node Run Result.
+    节点运行结果实体类
+    
+    用于存储节点运行的结果信息，包括状态、输入输出、元数据等。
+    
+    属性：
+    - status: 节点执行状态
+    - inputs: 节点输入数据
+    - process_data: 处理过程中的数据
+    - outputs: 节点输出数据
+    - metadata: 节点元数据
+    - llm_usage: LLM使用情况
+    - edge_source_handle: 多分支节点的源句柄ID
+    - error: 错误信息（如果状态为失败）
+    - error_type: 错误类型（如果状态为失败）
+    - retry_index: 重试次数
     """
 
     status: WorkflowNodeExecutionStatus = WorkflowNodeExecutionStatus.RUNNING
@@ -56,5 +92,15 @@ class NodeRunResult(BaseModel):
 
 
 class AgentNodeStrategyInit(BaseModel):
+    """
+    代理节点策略初始化实体类
+    
+    用于初始化代理节点的策略配置。
+    
+    属性：
+    - name: 策略名称
+    - icon: 策略图标（可选）
+    """
+
     name: str
     icon: str | None = None

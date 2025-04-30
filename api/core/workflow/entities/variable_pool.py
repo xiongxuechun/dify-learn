@@ -13,33 +13,48 @@ from factories import variable_factory
 from ..constants import CONVERSATION_VARIABLE_NODE_ID, ENVIRONMENT_VARIABLE_NODE_ID, SYSTEM_VARIABLE_NODE_ID
 from ..enums import SystemVariableKey
 
+# 变量值类型定义，支持字符串、整数、浮点数、字典、列表和文件
 VariableValue = Union[str, int, float, dict, list, File]
 
+# 变量模式正则表达式，用于匹配模板中的变量
 VARIABLE_PATTERN = re.compile(r"\{\{#([a-zA-Z0-9_]{1,50}(?:\.[a-zA-Z_][a-zA-Z0-9_]{0,29}){1,10})#\}\}")
 
 
 class VariablePool(BaseModel):
-    # Variable dictionary is a dictionary for looking up variables by their selector.
-    # The first element of the selector is the node id, it's the first-level key in the dictionary.
-    # Other elements of the selector are the keys in the second-level dictionary. To get the key, we hash the
-    # elements of the selector except the first one.
+    """
+    变量池实体类
+    
+    用于管理工作流中的变量，包括系统变量、环境变量、会话变量等。
+    变量通过选择器（selector）进行访问，选择器的第一个元素是节点ID。
+    
+    属性：
+    - variable_dictionary: 变量字典，用于通过选择器查找变量
+    - user_inputs: 用户输入
+    - system_variables: 系统变量
+    - environment_variables: 环境变量
+    - conversation_variables: 会话变量
+    """
+
+    # 变量字典是一个用于通过选择器查找变量的字典。
+    # 选择器的第一个元素是节点ID，它是字典中的第一级键。
+    # 选择器的其他元素是第二级字典中的键。为了获取键，我们对选择器中除第一个元素外的其他元素进行哈希。
     variable_dictionary: dict[str, dict[int, Segment]] = Field(
-        description="Variables mapping",
+        description="变量映射",
         default=defaultdict(dict),
     )
-    # TODO: This user inputs is not used for pool.
+    # TODO: 这个用户输入不用于池
     user_inputs: Mapping[str, Any] = Field(
-        description="User inputs",
+        description="用户输入",
     )
     system_variables: Mapping[SystemVariableKey, Any] = Field(
-        description="System variables",
+        description="系统变量",
     )
     environment_variables: Sequence[Variable] = Field(
-        description="Environment variables.",
+        description="环境变量",
         default_factory=list,
     )
     conversation_variables: Sequence[Variable] = Field(
-        description="Conversation variables.",
+        description="会话变量",
         default_factory=list,
     )
 
@@ -52,6 +67,15 @@ class VariablePool(BaseModel):
         conversation_variables: Sequence[Variable] | None = None,
         **kwargs,
     ):
+        """
+        初始化变量池
+        
+        :param system_variables: 系统变量
+        :param user_inputs: 用户输入
+        :param environment_variables: 环境变量
+        :param conversation_variables: 会话变量
+        :param kwargs: 其他参数
+        """
         environment_variables = environment_variables or []
         conversation_variables = conversation_variables or []
         user_inputs = user_inputs or {}
@@ -65,34 +89,28 @@ class VariablePool(BaseModel):
             **kwargs,
         )
 
+        # 将系统变量添加到变量池
         for key, value in self.system_variables.items():
             self.add((SYSTEM_VARIABLE_NODE_ID, key.value), value)
-        # Add environment variables to the variable pool
+        # 将环境变量添加到变量池
         for var in self.environment_variables:
             self.add((ENVIRONMENT_VARIABLE_NODE_ID, var.name), var)
-        # Add conversation variables to the variable pool
+        # 将会话变量添加到变量池
         for var in self.conversation_variables:
             self.add((CONVERSATION_VARIABLE_NODE_ID, var.name), var)
 
     def add(self, selector: Sequence[str], value: Any, /) -> None:
         """
-        Adds a variable to the variable pool.
-
-        NOTE: You should not add a non-Segment value to the variable pool
-        even if it is allowed now.
-
-        Args:
-            selector (Sequence[str]): The selector for the variable.
-            value (VariableValue): The value of the variable.
-
-        Raises:
-            ValueError: If the selector is invalid.
-
-        Returns:
-            None
+        向变量池添加变量
+        
+        注意：即使现在允许，也不应该向变量池添加非Segment类型的值。
+        
+        :param selector: 变量的选择器
+        :param value: 变量的值
+        :raises ValueError: 如果选择器无效
         """
         if len(selector) < 2:
-            raise ValueError("Invalid selector")
+            raise ValueError("无效的选择器")
 
         if isinstance(value, Variable):
             variable = value
@@ -107,16 +125,11 @@ class VariablePool(BaseModel):
 
     def get(self, selector: Sequence[str], /) -> Segment | None:
         """
-        Retrieves the value from the variable pool based on the given selector.
-
-        Args:
-            selector (Sequence[str]): The selector used to identify the variable.
-
-        Returns:
-            Any: The value associated with the given selector.
-
-        Raises:
-            ValueError: If the selector is invalid.
+        根据选择器从变量池中获取值
+        
+        :param selector: 用于标识变量的选择器
+        :return: 与给定选择器关联的值
+        :raises ValueError: 如果选择器无效
         """
         if len(selector) < 2:
             return None
@@ -126,7 +139,7 @@ class VariablePool(BaseModel):
 
         if value is None:
             selector, attr = selector[:-1], selector[-1]
-            # Python support `attr in FileAttribute` after 3.12
+            # Python 3.12后支持 `attr in FileAttribute`
             if attr not in {item.value for item in FileAttribute}:
                 return None
             value = self.get(selector)
@@ -142,13 +155,9 @@ class VariablePool(BaseModel):
 
     def remove(self, selector: Sequence[str], /):
         """
-        Remove variables from the variable pool based on the given selector.
-
-        Args:
-            selector (Sequence[str]): A sequence of strings representing the selector.
-
-        Returns:
-            None
+        根据给定的选择器从变量池中移除变量
+        
+        :param selector: 表示选择器的字符串序列
         """
         if not selector:
             return
@@ -159,6 +168,12 @@ class VariablePool(BaseModel):
         self.variable_dictionary[selector[0]].pop(hash_key, None)
 
     def convert_template(self, template: str, /):
+        """
+        将模板转换为段组
+        
+        :param template: 包含变量的模板字符串
+        :return: 转换后的段组
+        """
         parts = VARIABLE_PATTERN.split(template)
         segments = []
         for part in filter(lambda x: x, parts):
@@ -169,6 +184,12 @@ class VariablePool(BaseModel):
         return SegmentGroup(value=segments)
 
     def get_file(self, selector: Sequence[str], /) -> FileSegment | None:
+        """
+        获取文件段
+        
+        :param selector: 文件的选择器
+        :return: 文件段，如果不存在则返回None
+        """
         segment = self.get(selector)
         if isinstance(segment, FileSegment):
             return segment
